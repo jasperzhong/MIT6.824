@@ -1,0 +1,106 @@
+package mapreduce
+
+import (
+	"encoding/json"
+	"os"
+	"sort"
+)
+
+func doReduce(
+	jobName string, // the name of the whole MapReduce job
+	reduceTask int, // which reduce task this is
+	outFile string, // write the output here
+	nMap int, // the number of map tasks that were run ("M" in the paper)
+	reduceF func(key string, values []string) string,
+) {
+	//
+	// doReduce manages one reduce task: it should read the intermediate
+	// files for the task, sort the intermediate key/value pairs by key,
+	// call the user-defined reduce function (reduceF) for each key, and
+	// write reduceF's output to disk.
+	//
+	// You'll need to read one intermediate file from each map task;
+	// reduceName(jobName, m, reduceTask) yields the file
+	// name from map task m.
+	//
+	// Your doMap() encoded the key/value pairs in the intermediate
+	// files, so you will need to decode them. If you used JSON, you can
+	// read and decode by creating a decoder and repeatedly calling
+	// .Decode(&kv) on it until it returns an error.
+	//
+	// You may find the first example in the golang sort package
+	// documentation useful.
+	//
+	// reduceF() is the application's reduce function. You should
+	// call it once per distinct key, with a slice of all the values
+	// for that key. reduceF() returns the reduced value for that key.
+	//
+	// You should write the reduce output as JSON encoded KeyValue
+	// objects to the file named outFile. We require you to use JSON
+	// because that is what the merger than combines the output
+	// from all the reduce tasks expects. There is nothing special about
+	// JSON -- it is just the marshalling format we chose to use. Your
+	// output code will look something like this:
+	//
+	// enc := json.NewEncoder(file)
+	// for key := ... {
+	// 	enc.Encode(KeyValue{key, reduceF(...)})
+	// }
+	// file.Close()
+	//
+	// Your code here (Part I).
+	//
+
+	kvs := make([]KeyValue, 0, 0)
+	for i := 0; i < nMap; i++ {
+		fileName := reduceName(jobName, i, reduceTask)
+		f, err := os.Open(fileName)
+		if err != nil {
+			panic(err)
+		}
+		dec := json.NewDecoder(f)
+		for {
+			var kv KeyValue
+			err = dec.Decode(&kv)
+			if err != nil {
+				break
+			}
+			kvs = append(kvs, kv)
+		}
+		f.Close()
+
+	}
+
+	sort.Slice(kvs, func(i, j int) bool {
+		return kvs[i].Key < kvs[j].Key
+	})
+
+	res := make([]KeyValue, 0, 0)
+	curKey := kvs[0].Key
+	curValues := make([]string, 0, 0)
+	for i := 0; i < len(kvs)-1; i++ {
+		curValues = append(curValues, kvs[i].Value)
+		if kvs[i].Key == kvs[i+1].Key {
+			continue
+		}
+		reduced := reduceF(curKey, curValues)
+		res = append(res, KeyValue{curKey, reduced})
+		curKey = kvs[i+1].Key
+		curValues = curValues[:0]
+	}
+	if kvs[len(kvs)-1].Key != kvs[len(kvs)-2].Key {
+		reduced := reduceF(curKey, curValues)
+		res = append(res, KeyValue{curKey, reduced})
+	}
+
+	f, err := os.Create(outFile)
+	if err != nil {
+		panic(err)
+	}
+	enc := json.NewEncoder(f)
+	for _, kv := range res {
+		enc.Encode(KeyValue{kv.Key, kv.Value})
+	}
+
+	f.Close()
+}
