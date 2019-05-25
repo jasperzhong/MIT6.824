@@ -88,10 +88,9 @@ func doReduce(
 		curKey = kvs[i+1].Key
 		curValues = curValues[:0]
 	}
-	if kvs[len(kvs)-1].Key != kvs[len(kvs)-2].Key {
-		reduced := reduceF(curKey, curValues)
-		res = append(res, KeyValue{curKey, reduced})
-	}
+	curValues = append(curValues, kvs[len(kvs)-1].Value)
+	reduced := reduceF(curKey, curValues)
+	res = append(res, KeyValue{curKey, reduced})
 
 	f, err := os.Create(outFile)
 	if err != nil {

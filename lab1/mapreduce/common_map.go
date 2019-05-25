@@ -56,6 +56,7 @@ func doMap(
 	//
 	// Your code here (Part I).
 	//
+
 	contents, err := ioutil.ReadFile(inFile)
 	if err != nil {
 		panic(err)
