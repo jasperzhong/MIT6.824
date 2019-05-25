@@ -38,9 +38,6 @@ func schedule(jobName string, mapFiles []string, nReduce int, phase jobPhase, re
 	wg.Add(ntasks)
 	index := 0
 	f := func(w string, index int) {
-		if index >= ntasks {
-			return
-		}
 		args := DoTaskArgs{jobName, mapFiles[index], phase, index, n_other}
 		call(w, "Worker.DoTask", args, nil)
 		ch <- w
@@ -51,19 +48,22 @@ loop:
 	for {
 		select {
 		case w := <-registerChan:
-			go f(w, index)
-			index++
+			if index < ntasks {
+				go f(w, index)
+				index++
+			}
 		case w := <-ch:
 			wg.Done()
 			cnt++
 			if cnt >= ntasks {
 				break loop
 			}
-			go f(w, index)
-			index++
+			if index < ntasks {
+				go f(w, index)
+				index++
+			}
 		}
 	}
-	fmt.Println("out")
 	wg.Wait()
 	fmt.Printf("Schedule: %v done\n", phase)
 }
