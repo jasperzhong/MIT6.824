@@ -5,6 +5,11 @@ import (
 	"sync"
 )
 
+type callRet struct {
+	worker string
+	flag   bool
+}
+
 //
 // schedule() starts and waits for all tasks in the given phase (mapPhase
 // or reducePhase). the mapFiles argument holds the names of the files that
@@ -33,14 +38,15 @@ func schedule(jobName string, mapFiles []string, nReduce int, phase jobPhase, re
 	//
 	// Your code here (Part III, Part IV).
 	//
-	ch := make(chan string)
+	workerState := make(map[string]bool)
+	ch := make(chan callRet)
 	wg := &sync.WaitGroup{}
 	wg.Add(ntasks)
 	index := 0
 	f := func(w string, index int) {
 		args := DoTaskArgs{jobName, mapFiles[index], phase, index, n_other}
-		call(w, "Worker.DoTask", args, nil)
-		ch <- w
+		res := call(w, "Worker.DoTask", args, nil)
+		ch <- callRet{w, res}
 	}
 
 	cnt := 0
@@ -49,17 +55,32 @@ loop:
 		select {
 		case w := <-registerChan:
 			if index < ntasks {
+				workerState[w] = true
 				go f(w, index)
 				index++
 			}
-		case w := <-ch:
+		case ret := <-ch:
+			// if failed
+			if !ret.flag {
+				index--
+				for k, v := range workerState {
+					if !v {
+						go f(k, index)
+						index++
+						break
+					}
+				}
+				break
+			}
+			workerState[ret.worker] = false
 			wg.Done()
 			cnt++
+
 			if cnt >= ntasks {
 				break loop
 			}
 			if index < ntasks {
-				go f(w, index)
+				go f(ret.worker, index)
 				index++
 			}
 		}
